@@ -1,0 +1,17 @@
+# mlops-agent/grafana/provisioning/datasources/prometheus.yml
+# Auto-provisioned Prometheus datasource.
+# "uid: prometheus" is referenced by every panel in mlops_agent.json.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus          # stable UID — used in dashboard JSON as {"uid": "prometheus"}
+    url: http://prometheus:9090
+    access: proxy            # Grafana backend proxies requests; browser never hits Prometheus directly
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST       # POST is more efficient for large queries than GET
+      timeInterval: "15s"    # matches prometheus.yml scrape_interval

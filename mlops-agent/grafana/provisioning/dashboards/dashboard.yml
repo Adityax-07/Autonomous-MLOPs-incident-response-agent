@@ -1,0 +1,16 @@
+# mlops-agent/grafana/provisioning/dashboards/dashboard.yml
+# Tells Grafana where to find dashboard JSON files.
+# Files dropped into /var/lib/grafana/dashboards/ are loaded automatically.
+
+apiVersion: 1
+
+providers:
+  - name: mlops-agent
+    orgId: 1
+    type: file
+    disableDeletion: false          # allow deleting from UI (useful for dev)
+    updateIntervalSeconds: 10       # re-scan every 10s so edits to JSON are picked up
+    allowUiUpdates: true            # allow saving edits made in the Grafana UI
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

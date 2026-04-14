@@ -1,0 +1,37 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# ML artifacts (generated at runtime)
+models/model.joblib
+models/metadata.json
+data/predictions.log
+data/drifted_data.csv
+data/production.csv
+
+# MLflow runs
+mlruns/
+
+# Monitor outputs
+monitor/latest_report.json
+monitor/reports/
+
+# Alerts
+alerts/
+
+# Grafana / Prometheus data
+grafana-data/
+prometheus-data/
+
+# Misc
+*.log
+.DS_Store
+Thumbs.db
