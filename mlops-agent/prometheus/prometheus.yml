@@ -1,0 +1,37 @@
+# mlops-agent/prometheus/prometheus.yml
+# Prometheus scrape configuration for the MLOps stack.
+#
+# Service names are Docker Compose service names — they resolve correctly
+# within the mlops-net bridge network.  Using "localhost" here would target
+# Prometheus's own container, not the FastAPI server.
+
+global:
+  scrape_interval:     15s   # pull metrics every 15 seconds
+  evaluation_interval: 15s   # evaluate alert rules every 15 seconds
+  scrape_timeout:      10s
+
+scrape_configs:
+
+  # ── FastAPI inference server ────────────────────────────────────────────────
+  # Exposes: prediction_latency_ms, predictions_total, model_drift_score,
+  #          model_accuracy, agent_decisions_total, agent_retrains_total,
+  #          drift_check_duration_ms  (all defined in app/metrics.py)
+  - job_name: "fastapi-server"
+    static_configs:
+      - targets: ["fastapi-server:8000"]
+    metrics_path: /metrics
+
+  # ── Prometheus self-monitoring ──────────────────────────────────────────────
+  # Useful for tracking scrape durations and up/down state of each target.
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ── MLflow server ───────────────────────────────────────────────────────────
+  # MLflow does not expose Prometheus metrics by default.
+  # This entry is kept as a placeholder — remove if it causes scrape errors.
+  # To enable: pip install mlflow[extras] and set MLFLOW_ENABLE_PROMETHEUS=true
+  # - job_name: "mlflow-server"
+  #   static_configs:
+  #     - targets: ["mlflow-server:5000"]
+  #   metrics_path: /metrics

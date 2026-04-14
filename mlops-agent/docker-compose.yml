@@ -1,0 +1,162 @@
+# mlops-agent/docker-compose.yml
+# Full MLOps stack: FastAPI + MLflow + Prometheus + Grafana + scheduler + agent
+#
+# Usage:
+#   cp .env.example .env          # fill in SLACK_WEBHOOK_URL etc.
+#   docker compose up --build
+#
+# Ports exposed to the host:
+#   8000  FastAPI inference server   http://localhost:8000/docs
+#   5000  MLflow tracking UI         http://localhost:5000
+#   9090  Prometheus                 http://localhost:9090
+#   3000  Grafana dashboard          http://localhost:3000  (admin / see .env)
+
+name: mlops-agent
+
+services:
+
+  # ── FastAPI inference server ────────────────────────────────────────────────
+  fastapi-server:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models          # model.joblib + metadata.json
+      - ./data:/app/data              # reference.csv + predictions.log
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+      - FASTAPI_RELOAD_URL=http://fastapi-server:8000/reload
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+    networks:
+      - mlops-net
+    restart: unless-stopped
+
+  # ── MLflow tracking server ──────────────────────────────────────────────────
+  mlflow-server:
+    build: .
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri file:///mlruns
+        --default-artifact-root file:///mlruns
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-data:/mlruns           # persistent MLflow runs + artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - mlops-net
+    restart: unless-stopped
+
+  # ── Prometheus ──────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"      # allows hot-reload via POST /-/reload
+    networks:
+      - mlops-net
+    restart: unless-stopped
+
+  # ── Grafana ─────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.3
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/mlops_agent.json
+    depends_on:
+      - prometheus
+    networks:
+      - mlops-net
+    restart: unless-stopped
+
+  # ── Drift monitor scheduler ─────────────────────────────────────────────────
+  monitor-scheduler:
+    build: .
+    command: python -m monitor.scheduler --interval 300
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./monitor:/app/monitor        # writes latest_report.json here
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    env_file:
+      - .env
+    depends_on:
+      fastapi-server:
+        condition: service_healthy
+    networks:
+      - mlops-net
+    restart: unless-stopped
+
+  # ── Agent runner (watch mode) ───────────────────────────────────────────────
+  agent-runner:
+    build: .
+    command: python -m agent.runner --watch --interval 300
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./monitor:/app/monitor        # reads latest_report.json written by scheduler
+      - mlflow-data:/app/mlruns       # writes MLflow runs to the shared volume
+    environment:
+      - MLFLOW_TRACKING_URI=file:///app/mlruns   # write directly to volume, bypass DNS rebinding
+      - FASTAPI_RELOAD_URL=http://fastapi-server:8000/reload
+      - AGENT_MODE=${AGENT_MODE:-rule_based}
+    env_file:
+      - .env
+    depends_on:
+      fastapi-server:
+        condition: service_healthy
+      mlflow-server:
+        condition: service_healthy
+    networks:
+      - mlops-net
+    restart: unless-stopped
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  mlflow-data:          # MLflow tracking runs + model artifacts
+  prometheus-data:      # Prometheus TSDB (15-day retention)
+  grafana-data:         # Grafana users, dashboards saved in UI, plugin cache
+
+# ── Network ───────────────────────────────────────────────────────────────────
+networks:
+  mlops-net:
+    driver: bridge
+    # All containers resolve each other by service name:
+    #   fastapi-server:8000   mlflow-server:5000   prometheus:9090
+    # NEVER use "localhost" in inter-service config — that refers to the
+    # container's own loopback, not another service.

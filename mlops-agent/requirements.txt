@@ -1,0 +1,33 @@
+# mlops-agent/requirements.txt
+
+# ── Model serving ──────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.7.0
+
+# ── ML ─────────────────────────────────────────────────────
+xgboost>=2.0.0
+scikit-learn>=1.4.0
+joblib>=1.4.0
+numpy>=1.26.0
+pandas>=2.1.0
+
+# ── Drift detection ─────────────────────────────────────────
+evidently>=0.4.16
+
+# ── Agent ───────────────────────────────────────────────────
+langgraph>=0.2.0
+langchain-core>=0.3.0
+anthropic>=0.28.0
+apscheduler>=3.10.0
+
+# ── Experiment tracking ──────────────────────────────────────
+mlflow>=2.12.0
+
+# ── Metrics & alerting ───────────────────────────────────────
+prometheus-client>=0.20.0
+requests>=2.31.0
+
+# ── Utilities ────────────────────────────────────────────────
+python-dotenv>=1.0.0
+httpx>=0.27.0
